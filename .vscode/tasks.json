@@ -10,6 +10,7 @@
                 "${workspaceFolder}/ProjetoJogo/Codigo/arena.c",
                 "${workspaceFolder}/ProjetoJogo/Codigo/player.c",
                 "${workspaceFolder}/ProjetoJogo/Codigo/inimigo.c",
+                "${workspaceFolder}/ProjetoJogo/Codigo/arma.c",
                 "${workspaceFolder}/ProjetoJogo/Codigo/lista_inimigos.c",
                 "${workspaceFolder}/ProjetoJogo/Codigo/fila_ondas.c",
                 "${workspaceFolder}/ProjetoJogo/Codigo/ondas.c",
