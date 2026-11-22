@@ -17,6 +17,7 @@ typedef struct {
 void ListaIniciar(ListaInimigos *lista);
 bool ListaInserir(ListaInimigos *lista, Inimigo inimigo);
 int  ListaRemoverMortos(ListaInimigos *lista);
+int  ListaContarVivos(const ListaInimigos *lista);
 bool ListaVazia(const ListaInimigos *lista);
 void ListaLimpar(ListaInimigos *lista);
 

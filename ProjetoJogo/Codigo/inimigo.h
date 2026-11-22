@@ -18,6 +18,18 @@ typedef struct {
     bool    olhandoDireita; // true = sprite original; false = espelhado
     float   tempoDano;      // segundos restantes do "flash" vermelho ao levar dano
     float   velocidade;     // pixels por segundo ao perseguir o alvo
+
+    bool    andando;
+    float   fasePasso;
+    float   intensidadeAndar;
+    float   tempoAnimacao;
+
+    Vector2 recuo;
+    float   tempoAtordoado;
+    int     ultimoDano;
+    float   tempoTextoDano;
+    float   tempoMorte;
+    int     ladoQueda;
 } Inimigo;
 
 // Carrega a imagem do orc UMA vez (todos os orcs usam a mesma textura)
@@ -41,6 +53,8 @@ bool InimigoPertoDe(const Inimigo *inimigo, Vector2 alvo, float alcance);
 
 // Tira "dano" de vida do inimigo. Retorna true se este golpe MATOU o orc.
 bool DanoInimigo(Inimigo *inimigo, int dano);
+
+bool GolpearInimigo(Inimigo *inimigo, int dano, Vector2 origem);
 
 // Desenha o orc + barra de vida + nível (não desenha nada se estiver morto)
 void DesenharInimigo(const Inimigo *inimigo);

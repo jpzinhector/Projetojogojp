@@ -10,6 +10,7 @@
                 "${workspaceFolder}/arena.c",
                 "${workspaceFolder}/player.c",
                 "${workspaceFolder}/inimigo.c",
+                "${workspaceFolder}/arma.c",
                 "${workspaceFolder}/lista_inimigos.c",
                 "${workspaceFolder}/fila_ondas.c",
                 "${workspaceFolder}/ondas.c",

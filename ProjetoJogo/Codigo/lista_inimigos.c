@@ -26,7 +26,8 @@ int ListaRemoverMortos(ListaInimigos *lista)
 
     while (*cursor != NULL) {
         NoInimigo *atual = *cursor;
-        if (atual->inimigo.vida <= 0) {
+        if (atual->inimigo.vida <= 0 && atual->inimigo.tempoMorte <= 0.0f
+            && atual->inimigo.tempoTextoDano <= 0.0f) {
             *cursor = atual->proximo;
             free(atual);
             lista->tamanho--;
@@ -36,6 +37,15 @@ int ListaRemoverMortos(ListaInimigos *lista)
         }
     }
     return removidos;
+}
+
+int ListaContarVivos(const ListaInimigos *lista)
+{
+    int vivos = 0;
+    for (const NoInimigo *no = lista->inicio; no != NULL; no = no->proximo) {
+        if (no->inimigo.vida > 0) vivos++;
+    }
+    return vivos;
 }
 
 bool ListaVazia(const ListaInimigos *lista)

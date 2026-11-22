@@ -1,11 +1,13 @@
 #include "raylib.h"
 #include <stdlib.h>
 #include <stdbool.h>
+#include <math.h>
 
 #include "config.h"
 #include "arena.h"
 #include "player.h"
 #include "inimigo.h"
+#include "arma.h"
 #include "lista_inimigos.h"
 #include "fila_ondas.h"
 #include "ondas.h"
@@ -14,8 +16,7 @@
 #define ALCANCE_ATAQUE        120.0f
 #define DANO_ATAQUE           10
 #define PONTOS_POR_ORC        100
-#define RECARGA_ATAQUE        0.3f
-#define DURACAO_EFEITO_ATAQUE 0.12f
+#define MARGEM_ATRAS_ATAQUE   20.0f
 #define RAIO_CONTATO          55.0f
 #define ESPERA_ENTRE_ONDAS    2.0f
 
@@ -31,27 +32,63 @@ typedef struct {
     float  tempo;
     int    ondaAtual;
     float  esperaOnda;
-    float  recargaAtaque;
-    float  efeitoAtaque;
 } Partida;
 
-static void ReiniciarPartida(Partida *partida, Player *player, ListaInimigos *inimigos, FilaOndas *ondas)
+static void ReiniciarPartida(Partida *partida, Player *player, Arma *arma, ListaInimigos *inimigos, FilaOndas *ondas)
 {
     ListaLimpar(inimigos);
     FilaLimpar(ondas);
     CarregarOndas(ondas);
     ResetarPlayer(player);
+    ResetarArma(arma);
 
     partida->estado        = ESTADO_JOGANDO;
     partida->pontos        = 0;
     partida->tempo         = 0.0f;
     partida->ondaAtual     = 0;
     partida->esperaOnda    = 0.0f;
-    partida->recargaAtaque = 0.0f;
-    partida->efeitoAtaque  = 0.0f;
 }
 
-static void AtualizarPartida(Partida *partida, Player *player, const Arena *arena,
+static void TentarAtacar(Arma *arma, Player *player, const ListaInimigos *inimigos)
+{
+    Vector2 centro = CentroPlayer(player);
+    bool direita = player->olhandoDireita;
+    float menorDistancia = ALCANCE_ATAQUE + 1.0f;
+
+    for (const NoInimigo *no = inimigos->inicio; no != NULL; no = no->proximo) {
+        if (!InimigoPertoDe(&no->inimigo, centro, ALCANCE_ATAQUE)) continue;
+
+        float dx = (no->inimigo.posicao.x + no->inimigo.tamanho.x / 2.0f) - centro.x;
+        float dy = (no->inimigo.posicao.y + no->inimigo.tamanho.y / 2.0f) - centro.y;
+        float distancia = sqrtf(dx * dx + dy * dy);
+
+        if (distancia < menorDistancia) {
+            menorDistancia = distancia;
+            direita = (dx >= 0.0f);
+        }
+    }
+
+    IniciarGolpe(arma, direita);
+}
+
+static void AplicarGolpe(Partida *partida, const Arma *arma, const Player *player, ListaInimigos *inimigos)
+{
+    Vector2 centro = CentroPlayer(player);
+
+    for (NoInimigo *no = inimigos->inicio; no != NULL; no = no->proximo) {
+        if (!InimigoPertoDe(&no->inimigo, centro, ALCANCE_ATAQUE)) continue;
+
+        float dx = (no->inimigo.posicao.x + no->inimigo.tamanho.x / 2.0f) - centro.x;
+        bool naFrente = arma->direita ? (dx >= -MARGEM_ATRAS_ATAQUE) : (dx <= MARGEM_ATRAS_ATAQUE);
+        if (!naFrente) continue;
+
+        if (GolpearInimigo(&no->inimigo, DANO_ATAQUE, centro)) {
+            partida->pontos += PONTOS_POR_ORC;
+        }
+    }
+}
+
+static void AtualizarPartida(Partida *partida, Player *player, Arma *arma, const Arena *arena,
                              ListaInimigos *inimigos, FilaOndas *ondas, Texture2D spriteOrc, float dt)
 {
     AtualizarPlayer(player, arena);
@@ -59,18 +96,18 @@ static void AtualizarPartida(Partida *partida, Player *player, const Arena *aren
 
     partida->tempo += dt;
 
-    if (partida->recargaAtaque > 0.0f) partida->recargaAtaque -= dt;
-    if (partida->efeitoAtaque  > 0.0f) partida->efeitoAtaque  -= dt;
+    if (IsKeyPressed(KEY_SPACE)) {
+        TentarAtacar(arma, player, inimigos);
+    }
 
-    if (IsKeyPressed(KEY_SPACE) && partida->recargaAtaque <= 0.0f) {
-        partida->recargaAtaque = RECARGA_ATAQUE;
-        partida->efeitoAtaque  = DURACAO_EFEITO_ATAQUE;
+    AtualizarArma(arma, dt);
 
-        for (NoInimigo *no = inimigos->inicio; no != NULL; no = no->proximo) {
-            if (InimigoPertoDe(&no->inimigo, centro, ALCANCE_ATAQUE)) {
-                if (DanoInimigo(&no->inimigo, DANO_ATAQUE)) partida->pontos += PONTOS_POR_ORC;
-            }
-        }
+    if (arma->atacando) {
+        player->olhandoDireita = arma->direita;
+    }
+
+    if (ConsumirImpacto(arma)) {
+        AplicarGolpe(partida, arma, player, inimigos);
     }
 
     for (NoInimigo *no = inimigos->inicio; no != NULL; no = no->proximo) {
@@ -112,7 +149,7 @@ static void AtualizarPartida(Partida *partida, Player *player, const Arena *aren
     }
 }
 
-static void DesenharPartida(const Partida *partida, const Player *player, const Arena *arena,
+static void DesenharPartida(const Partida *partida, const Player *player, const Arma *arma, const Arena *arena,
                             const ListaInimigos *inimigos, const FilaOndas *ondas)
 {
     DesenharArena(arena);
@@ -122,15 +159,10 @@ static void DesenharPartida(const Partida *partida, const Player *player, const 
     }
 
     DesenharPlayer(player);
-
-    if (partida->efeitoAtaque > 0.0f) {
-        Vector2 centro = CentroPlayer(player);
-        DrawCircleV(centro, ALCANCE_ATAQUE, Fade(WHITE, 0.12f));
-        DrawCircleLines((int)centro.x, (int)centro.y, ALCANCE_ATAQUE, Fade(WHITE, 0.6f));
-    }
+    DesenharArma(arma, player);
 
     DesenharUI(partida->pontos, partida->tempo);
-    DesenharPainelJogador(player, partida->ondaAtual, TOTAL_ONDAS, inimigos->tamanho);
+    DesenharPainelJogador(player, partida->ondaAtual, TOTAL_ONDAS, ListaContarVivos(inimigos));
 
     if (partida->estado == ESTADO_JOGANDO && ListaVazia(inimigos) && !FilaVazia(ondas) && partida->ondaAtual > 0) {
         DesenharAvisoOnda(partida->ondaAtual + 1);
@@ -163,6 +195,9 @@ int main(void)
     IniciarPlayer(player);
     IniciarArena(arena);
 
+    Arma arma;
+    IniciarArma(&arma);
+
     Texture2D spriteOrc = CarregarSpriteOrc();
 
     ListaInimigos inimigos;
@@ -171,22 +206,22 @@ int main(void)
 
     ListaIniciar(&inimigos);
     FilaIniciar(&ondas);
-    ReiniciarPartida(&partida, player, &inimigos, &ondas);
+    ReiniciarPartida(&partida, player, &arma, &inimigos, &ondas);
 
     while (!WindowShouldClose())
     {
         float dt = GetFrameTime();
 
         if (partida.estado == ESTADO_JOGANDO) {
-            AtualizarPartida(&partida, player, arena, &inimigos, &ondas, spriteOrc, dt);
+            AtualizarPartida(&partida, player, &arma, arena, &inimigos, &ondas, spriteOrc, dt);
         } else if (IsKeyPressed(KEY_ENTER)) {
-            ReiniciarPartida(&partida, player, &inimigos, &ondas);
+            ReiniciarPartida(&partida, player, &arma, &inimigos, &ondas);
         }
 
         BeginDrawing();
 
             ClearBackground(BLACK);
-            DesenharPartida(&partida, player, arena, &inimigos, &ondas);
+            DesenharPartida(&partida, player, &arma, arena, &inimigos, &ondas);
 
         EndDrawing();
     }
@@ -194,6 +229,7 @@ int main(void)
     ListaLimpar(&inimigos);
     FilaLimpar(&ondas);
 
+    FinalizarArma(&arma);
     FinalizarPlayer(player);
     FinalizarArena(arena);
     DescarregarSpriteOrc(spriteOrc);
