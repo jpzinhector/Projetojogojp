@@ -1,5 +1,5 @@
 /* ============================================================
- *  player/player.h
+ *  player.h
  *  INTERFACE PÚBLICA do módulo Player.
  *  A struct fica aqui (e não escondida no .c) porque o main.c
  *  precisa saber o tamanho dela para fazer o malloc.
@@ -9,7 +9,7 @@
 
 #include <stdbool.h>
 #include "raylib.h"
-#include "../arena/arena.h"   // AtualizarPlayer usa o tipo Arena
+#include "arena.h"            // AtualizarPlayer usa o tipo Arena (mesma pasta)
 
 typedef struct {
     Vector2 posicao;
