@@ -1,5 +1,5 @@
 /* ============================================================
- *  arena/arena.h
+ *  arena.h
  *  INTERFACE PÚBLICA do módulo Arena.
  *  Quem usar a arena (main.c, player.c...) só precisa incluir este arquivo.
  *  Aqui ficam apenas: o tipo (struct) e os protótipos das funções.
