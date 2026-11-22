@@ -17,6 +17,7 @@ typedef struct {
     Texture2D sprite;       // cópia da textura COMPARTILHADA (não descarregue por aqui!)
     bool    olhandoDireita; // true = sprite original; false = espelhado
     float   tempoDano;      // segundos restantes do "flash" vermelho ao levar dano
+    float   velocidade;     // pixels por segundo ao perseguir o alvo
 } Inimigo;
 
 // Carrega a imagem do orc UMA vez (todos os orcs usam a mesma textura)
@@ -27,6 +28,12 @@ void IniciarInimigo(Inimigo *inimigo, Texture2D sprite, Vector2 posicao, int niv
 
 // Atualiza timers do inimigo (flash de dano). Chame todo frame.
 void AtualizarInimigo(Inimigo *inimigo, float deltaTime);
+
+void MoverInimigo(Inimigo *inimigo, Vector2 alvo, float deltaTime, Rectangle limites);
+
+void AfastarInimigos(Inimigo *a, Inimigo *b, Rectangle limites);
+
+int DanoContatoInimigo(const Inimigo *inimigo);
 
 // Retorna true se o inimigo está vivo e o CENTRO dele está a no máximo
 // "alcance" pixels do ponto "alvo" (ex.: centro do player)

@@ -24,10 +24,20 @@ typedef struct {
     float tempoFrame;     // segundos acumulados desde a última troca de frame
     bool  andando;        // true se alguma tecla de movimento está pressionada
     bool  olhandoDireita; // true = sprite original; false = espelhado
+
+    int   vida;
+    int   vidaMaxima;
+    float tempoInvulneravel;
 } Player;
 
 // Carrega o sprite, define tamanho, posição inicial e estado da animação
 void IniciarPlayer(Player *player);
+
+void ResetarPlayer(Player *player);
+
+bool DanoPlayer(Player *player, int dano);
+
+Vector2 CentroPlayer(const Player *player);
 
 // Lê o teclado, move o player, aplica os limites da arena e avança a animação
 // A arena é "const": o player só precisa LER os limites dela

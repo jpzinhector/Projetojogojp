@@ -17,6 +17,8 @@
 #define FPS_ANIMACAO    12.0f  // frames trocados por segundo (maior = pernas mais rápidas)
 #define FRAME_PARADO    0      // frame mostrado quando o jogador não está andando
 #define ALTURA_PLAYER   104.0f // altura com que o player aparece na tela
+#define VIDA_PLAYER     100
+#define TEMPO_INVULNERAVEL 1.0f
 
 void IniciarPlayer(Player *player)
 {
@@ -36,19 +38,48 @@ void IniciarPlayer(Player *player)
                     : 0.72f;
     player->tamanho = (Vector2){ ALTURA_PLAYER * proporcao, ALTURA_PLAYER };
 
-    // Começa no centro da janela
+    player->velocidade = 250.0f; // pixels por segundo
+    player->vidaMaxima = VIDA_PLAYER;
+
+    ResetarPlayer(player);
+}
+
+void ResetarPlayer(Player *player)
+{
     player->posicao = (Vector2){
         LARGURA_JANELA / 2.0f - player->tamanho.x / 2.0f,
         ALTURA_JANELA  / 2.0f - player->tamanho.y / 2.0f
     };
 
-    player->velocidade = 250.0f; // pixels por segundo
-
-    // Estado inicial da animação: parado, olhando para a direita, no frame 0
     player->frameAtual     = FRAME_PARADO;
     player->tempoFrame     = 0.0f;
     player->andando        = false;
     player->olhandoDireita = true;
+
+    player->vida              = player->vidaMaxima;
+    player->tempoInvulneravel = 0.0f;
+}
+
+bool DanoPlayer(Player *player, int dano)
+{
+    if (player->tempoInvulneravel > 0.0f || player->vida <= 0) return false;
+
+    player->vida -= dano;
+    player->tempoInvulneravel = TEMPO_INVULNERAVEL;
+
+    if (player->vida <= 0) {
+        player->vida = 0;
+        return true;
+    }
+    return false;
+}
+
+Vector2 CentroPlayer(const Player *player)
+{
+    return (Vector2){
+        player->posicao.x + player->tamanho.x / 2.0f,
+        player->posicao.y + player->tamanho.y / 2.0f
+    };
 }
 
 void AtualizarPlayer(Player *player, const Arena *arena)
@@ -56,6 +87,11 @@ void AtualizarPlayer(Player *player, const Arena *arena)
     // deltaTime = segundos que passaram desde o frame anterior do JOGO.
     // Usamos tanto para mover quanto para animar, assim nada depende do FPS.
     float deltaTime = GetFrameTime();
+
+    if (player->tempoInvulneravel > 0.0f) {
+        player->tempoInvulneravel -= deltaTime;
+        if (player->tempoInvulneravel < 0.0f) player->tempoInvulneravel = 0.0f;
+    }
 
     Vector2 direcao = { 0.0f, 0.0f };
 
@@ -148,7 +184,9 @@ void DesenharPlayer(const Player *player)
     // "destino" = onde e com que tamanho o recorte aparece na tela
     Rectangle destino = { player->posicao.x, player->posicao.y, player->tamanho.x, player->tamanho.y };
 
-    DrawTexturePro(player->sprite, origem, destino, (Vector2){ 0, 0 }, 0.0f, WHITE);
+    Color tinta = (player->tempoInvulneravel > 0.0f) ? (Color){ 255, 110, 110, 255 } : WHITE;
+
+    DrawTexturePro(player->sprite, origem, destino, (Vector2){ 0, 0 }, 0.0f, tinta);
 }
 
 void FinalizarPlayer(Player *player)

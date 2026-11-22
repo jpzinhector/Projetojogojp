@@ -1,58 +1,146 @@
-/* ============================================================
- *  main.c
- *  Ponto de entrada do jogo. Aqui ficam só a janela, o laço principal
- *  e a UI; o resto mora nos módulos: arena, player e inimigo.
- * ============================================================ */
 #include "raylib.h"
-#include "raymath.h"
 #include <stdlib.h>
 #include <stdbool.h>
-#include <stdio.h>
 
-#include "config.h"    // LARGURA_JANELA, ALTURA_JANELA, TITULO_JANELA
+#include "config.h"
 #include "arena.h"
 #include "player.h"
 #include "inimigo.h"
+#include "lista_inimigos.h"
+#include "fila_ondas.h"
+#include "ondas.h"
+#include "ui.h"
 
-#define TOTAL_INIMIGOS         5
-#define DISTANCIA_MINIMA_SPAWN 250.0f  // distância mínima do player ao nascer
-#define ALCANCE_ATAQUE         120.0f  // distância máxima para o golpe acertar
-#define DANO_ATAQUE            10      // vida tirada por golpe
-#define PONTOS_POR_ORC         100     // pontos ganhos ao matar um orc
+#define ALCANCE_ATAQUE        120.0f
+#define DANO_ATAQUE           10
+#define PONTOS_POR_ORC        100
+#define RECARGA_ATAQUE        0.3f
+#define DURACAO_EFEITO_ATAQUE 0.12f
+#define RAIO_CONTATO          55.0f
+#define ESPERA_ENTRE_ONDAS    2.0f
 
-void DesenharUI (int pontos, float tempoDecorrido)
+typedef enum {
+    ESTADO_JOGANDO,
+    ESTADO_DERROTA,
+    ESTADO_VITORIA
+} Estado;
+
+typedef struct {
+    Estado estado;
+    int    pontos;
+    float  tempo;
+    int    ondaAtual;
+    float  esperaOnda;
+    float  recargaAtaque;
+    float  efeitoAtaque;
+} Partida;
+
+static void ReiniciarPartida(Partida *partida, Player *player, ListaInimigos *inimigos, FilaOndas *ondas)
 {
-    int minutos = (int)tempoDecorrido / 60;
-    int segundos = (int)tempoDecorrido % 60;
+    ListaLimpar(inimigos);
+    FilaLimpar(ondas);
+    CarregarOndas(ondas);
+    ResetarPlayer(player);
 
-    char bufferPontos[32];
-    char bufferTempo[32];
+    partida->estado        = ESTADO_JOGANDO;
+    partida->pontos        = 0;
+    partida->tempo         = 0.0f;
+    partida->ondaAtual     = 0;
+    partida->esperaOnda    = 0.0f;
+    partida->recargaAtaque = 0.0f;
+    partida->efeitoAtaque  = 0.0f;
+}
 
-    // Formata os textos
-    snprintf(bufferPontos, sizeof(bufferPontos), "PONTOS: %04d", pontos);
-    snprintf(bufferTempo, sizeof(bufferTempo), "TEMPO: %02d:%02d", minutos, segundos);
+static void AtualizarPartida(Partida *partida, Player *player, const Arena *arena,
+                             ListaInimigos *inimigos, FilaOndas *ondas, Texture2D spriteOrc, float dt)
+{
+    AtualizarPlayer(player, arena);
+    Vector2 centro = CentroPlayer(player);
 
-    // Posição da UI (canto superior direito)
-    float uiX = 720.0f;
-    float uiY = 0.0f;
-    float uiLargura = 230.0f;
-    float uiAltura = 100.0f;
+    partida->tempo += dt;
 
-    Rectangle outerRect = {uiX, uiY, uiLargura, uiAltura};
-    Rectangle innerRect = {uiX + 4, uiY + 4, uiLargura - 8, uiAltura - 8};
+    if (partida->recargaAtaque > 0.0f) partida->recargaAtaque -= dt;
+    if (partida->efeitoAtaque  > 0.0f) partida->efeitoAtaque  -= dt;
 
-    // Cores do retângulo
-    Color backgroundDark = (Color) {3, 19, 38, 255};
-    Color borderHighlight = (Color) {77, 134, 184, 255};
+    if (IsKeyPressed(KEY_SPACE) && partida->recargaAtaque <= 0.0f) {
+        partida->recargaAtaque = RECARGA_ATAQUE;
+        partida->efeitoAtaque  = DURACAO_EFEITO_ATAQUE;
 
-    // Desenha as formas
-    DrawRectangleRounded(outerRect, 0.2f, 8, (Color){55, 100, 141, 255});
-    DrawRectangleRoundedLines(outerRect, 0.2f, 9, borderHighlight);
-    DrawRectangleRounded(innerRect, 0.18f, 8, backgroundDark);
+        for (NoInimigo *no = inimigos->inicio; no != NULL; no = no->proximo) {
+            if (InimigoPertoDe(&no->inimigo, centro, ALCANCE_ATAQUE)) {
+                if (DanoInimigo(&no->inimigo, DANO_ATAQUE)) partida->pontos += PONTOS_POR_ORC;
+            }
+        }
+    }
 
-    // Renderiza os textos (DrawText recebe posição em int, então convertemos)
-    DrawText (bufferPontos, (int)(uiX + 30), (int)(uiY + 25), 20, WHITE);
-    DrawText (bufferTempo,  (int)(uiX + 30), (int)(uiY + 60), 20, WHITE);
+    for (NoInimigo *no = inimigos->inicio; no != NULL; no = no->proximo) {
+        AtualizarInimigo(&no->inimigo, dt);
+        MoverInimigo(&no->inimigo, centro, dt, arena->limites);
+
+        if (InimigoPertoDe(&no->inimigo, centro, RAIO_CONTATO)) {
+            if (DanoPlayer(player, DanoContatoInimigo(&no->inimigo))) {
+                partida->estado = ESTADO_DERROTA;
+            }
+        }
+    }
+
+    for (NoInimigo *a = inimigos->inicio; a != NULL; a = a->proximo) {
+        for (NoInimigo *b = a->proximo; b != NULL; b = b->proximo) {
+            AfastarInimigos(&a->inimigo, &b->inimigo, arena->limites);
+        }
+    }
+
+    ListaRemoverMortos(inimigos);
+
+    if (partida->estado == ESTADO_DERROTA) return;
+
+    if (ListaVazia(inimigos)) {
+        if (FilaVazia(ondas)) {
+            partida->estado = ESTADO_VITORIA;
+        } else {
+            partida->esperaOnda -= dt;
+
+            if (partida->esperaOnda <= 0.0f) {
+                Onda proxima;
+                if (FilaDesenfileirar(ondas, &proxima)) {
+                    GerarOnda(inimigos, proxima, spriteOrc, arena->limites, centro);
+                    partida->ondaAtual++;
+                }
+                partida->esperaOnda = ESPERA_ENTRE_ONDAS;
+            }
+        }
+    }
+}
+
+static void DesenharPartida(const Partida *partida, const Player *player, const Arena *arena,
+                            const ListaInimigos *inimigos, const FilaOndas *ondas)
+{
+    DesenharArena(arena);
+
+    for (const NoInimigo *no = inimigos->inicio; no != NULL; no = no->proximo) {
+        DesenharInimigo(&no->inimigo);
+    }
+
+    DesenharPlayer(player);
+
+    if (partida->efeitoAtaque > 0.0f) {
+        Vector2 centro = CentroPlayer(player);
+        DrawCircleV(centro, ALCANCE_ATAQUE, Fade(WHITE, 0.12f));
+        DrawCircleLines((int)centro.x, (int)centro.y, ALCANCE_ATAQUE, Fade(WHITE, 0.6f));
+    }
+
+    DesenharUI(partida->pontos, partida->tempo);
+    DesenharPainelJogador(player, partida->ondaAtual, TOTAL_ONDAS, inimigos->tamanho);
+
+    if (partida->estado == ESTADO_JOGANDO && ListaVazia(inimigos) && !FilaVazia(ondas) && partida->ondaAtual > 0) {
+        DesenharAvisoOnda(partida->ondaAtual + 1);
+    }
+
+    if (partida->estado == ESTADO_VITORIA) {
+        DesenharTelaFinal(true, partida->pontos, partida->tempo);
+    } else if (partida->estado == ESTADO_DERROTA) {
+        DesenharTelaFinal(false, partida->pontos, partida->tempo);
+    }
 }
 
 int main(void)
@@ -65,8 +153,6 @@ int main(void)
     Player *player = malloc(sizeof(Player));
     Arena *arena = malloc(sizeof(Arena));
 
-    // CORREÇÃO: malloc pode falhar (devolve NULL). Antes o programa
-    // usava o ponteiro sem checar e quebrava se faltasse memória.
     if (player == NULL || arena == NULL) {
         free(player);
         free(arena);
@@ -78,81 +164,35 @@ int main(void)
     IniciarArena(arena);
 
     Texture2D spriteOrc = CarregarSpriteOrc();
-    Inimigo inimigos[TOTAL_INIMIGOS];
 
-    Vector2 centroPlayer = {
-        player->posicao.x + player->tamanho.x / 2.0f,
-        player->posicao.y + player->tamanho.y / 2.0f
-    };
+    ListaInimigos inimigos;
+    FilaOndas ondas;
+    Partida partida;
 
-    for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-        int nivel = 1 + i % 3;
-
-        // CORREÇÃO: o sorteio usava números fixos (39, 55, 90, 110) como se o
-        // orc tivesse sempre esse tamanho. Agora iniciamos o orc primeiro
-        // para descobrir o tamanho REAL dele e sortear dentro da arena.
-        IniciarInimigo(&inimigos[i], spriteOrc, (Vector2){ 0, 0 }, nivel);
-        Vector2 tam = inimigos[i].tamanho;
-
-        Vector2 pos;
-
-        // Sorteia de novo enquanto o orc nascer perto demais do player
-        do {
-            pos = (Vector2){
-                (float)GetRandomValue((int)arena->limites.x, (int)(arena->limites.x + arena->limites.width  - tam.x)),
-                (float)GetRandomValue((int)arena->limites.y, (int)(arena->limites.y + arena->limites.height - tam.y))
-            };
-        } while (Vector2Distance((Vector2){ pos.x + tam.x / 2.0f, pos.y + tam.y / 2.0f }, centroPlayer) < DISTANCIA_MINIMA_SPAWN);
-
-        // Inicia de novo já na posição final (isso também vira o orc para o centro)
-        IniciarInimigo(&inimigos[i], spriteOrc, pos, nivel);
-    }
-
-    int pontosAtuais = 0;
-    float tempoAtivo = 0.0f;
+    ListaIniciar(&inimigos);
+    FilaIniciar(&ondas);
+    ReiniciarPartida(&partida, player, &inimigos, &ondas);
 
     while (!WindowShouldClose())
     {
-        // Lê o tempo UMA vez por frame e usa em tudo
         float dt = GetFrameTime();
 
-        AtualizarPlayer(player, arena);
-
-        for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-            AtualizarInimigo(&inimigos[i], dt);
+        if (partida.estado == ESTADO_JOGANDO) {
+            AtualizarPartida(&partida, player, arena, &inimigos, &ondas, spriteOrc, dt);
+        } else if (IsKeyPressed(KEY_ENTER)) {
+            ReiniciarPartida(&partida, player, &inimigos, &ondas);
         }
-
-        if (IsKeyPressed(KEY_SPACE)) {
-            Vector2 centroAtaque = {
-                player->posicao.x + player->tamanho.x / 2.0f,
-                player->posicao.y + player->tamanho.y / 2.0f
-            };
-
-            for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-                if (InimigoPertoDe(&inimigos[i], centroAtaque, ALCANCE_ATAQUE)) {
-                    bool matou = DanoInimigo(&inimigos[i], DANO_ATAQUE);
-                    if (matou) pontosAtuais += PONTOS_POR_ORC;
-                }
-            }
-        }
-
-        tempoAtivo += dt;
 
         BeginDrawing();
 
             ClearBackground(BLACK);
-            DesenharArena(arena);
-
-            for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-                DesenharInimigo(&inimigos[i]);
-            }
-
-            DesenharPlayer(player);
-
-            DesenharUI(pontosAtuais, tempoAtivo);
+            DesenharPartida(&partida, player, arena, &inimigos, &ondas);
 
         EndDrawing();
     }
+
+    ListaLimpar(&inimigos);
+    FilaLimpar(&ondas);
 
     FinalizarPlayer(player);
     FinalizarArena(arena);
