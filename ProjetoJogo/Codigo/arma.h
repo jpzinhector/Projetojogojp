@@ -12,6 +12,7 @@ typedef struct {
     bool      atacando;
     bool      impactoPendente;
     bool      direita;
+    float     relogio;
 } Arma;
 
 void IniciarArma(Arma *arma);
@@ -21,6 +22,7 @@ void FinalizarArma(Arma *arma);
 bool IniciarGolpe(Arma *arma, bool direita);
 void AtualizarArma(Arma *arma, float deltaTime);
 bool ConsumirImpacto(Arma *arma);
+float AvancoArma(const Arma *arma);
 
 void DesenharArma(const Arma *arma, const Player *player);
 

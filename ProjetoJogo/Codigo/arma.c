@@ -11,6 +11,10 @@
 #define ANGULO_REPOUSO   25.0f
 #define ANGULO_PREPARO  -70.0f
 #define ANGULO_FINAL     125.0f
+#define ANGULO_ESQUIVA  -48.0f
+#define ANGULO_SOBRA     14.0f
+#define AVANCO_PREPARO   -6.0f
+#define AVANCO_GOLPE     13.0f
 #define ESCALA_ARMA      0.5f
 #define PIVO_X           28.0f
 #define PIVO_Y           126.0f
@@ -40,16 +44,35 @@ static float AnguloDoGolpe(float u)
 {
     if (u < FIM_PREPARO) {
         float t = u / FIM_PREPARO;
-        return ANGULO_REPOUSO + (ANGULO_PREPARO - ANGULO_REPOUSO) * Suavizar(t);
+        float s = Suavizar(t);
+        return ANGULO_REPOUSO + (ANGULO_PREPARO - 12.0f - ANGULO_REPOUSO) * s + 12.0f * s * s;
     }
 
     if (u < FIM_GOLPE) {
         float t = (u - FIM_PREPARO) / (FIM_GOLPE - FIM_PREPARO);
-        return ANGULO_PREPARO + (ANGULO_FINAL - ANGULO_PREPARO) * Suavizar(t);
+        float s = Suavizar(t);
+        return ANGULO_PREPARO + (ANGULO_FINAL + ANGULO_SOBRA - ANGULO_PREPARO) * s;
     }
 
     float t = (u - FIM_GOLPE) / (1.0f - FIM_GOLPE);
-    return ANGULO_FINAL + (ANGULO_REPOUSO - ANGULO_FINAL) * Suavizar(t);
+    float s = Suavizar(t);
+    float sobra = ANGULO_SOBRA * (1.0f - s);
+    return ANGULO_FINAL + sobra + (ANGULO_REPOUSO - ANGULO_FINAL) * s;
+}
+
+float AvancoArma(const Arma *arma)
+{
+    if (!arma->atacando) return 0.0f;
+
+    float u = ProgressoDoGolpe(arma);
+    float lado = arma->direita ? 1.0f : -1.0f;
+
+    if (u < FIM_PREPARO) return lado * AVANCO_PREPARO * Suavizar(u / FIM_PREPARO);
+    if (u < FIM_GOLPE) {
+        float s = Suavizar((u - FIM_PREPARO) / (FIM_GOLPE - FIM_PREPARO));
+        return lado * (AVANCO_PREPARO + (AVANCO_GOLPE - AVANCO_PREPARO) * s);
+    }
+    return lado * AVANCO_GOLPE * (1.0f - Suavizar((u - FIM_GOLPE) / (1.0f - FIM_GOLPE)));
 }
 
 static void DesenharRastro(Vector2 mao, float lado, float u)
@@ -75,8 +98,13 @@ static void DesenharRastro(Vector2 mao, float lado, float u)
         float a1 = anguloCauda + (anguloPonta - anguloCauda) * (float)(i + 1) / RASTRO_PARTES;
         float opacidade = 0.55f * visibilidade * (float)(i + 1) / RASTRO_PARTES;
 
+        float mistura = (float)(i + 1) / RASTRO_PARTES;
+        Color cor = { (unsigned char)(150 + 105 * mistura), (unsigned char)(200 + 55 * mistura), 255, 255 };
+
         DrawRing(mao, RASTRO_RAIO_MIN, RASTRO_RAIO_MAX,
-                 a0 * lado - 90.0f, a1 * lado - 90.0f, 6, Fade(RAYWHITE, opacidade));
+                 a0 * lado - 90.0f, a1 * lado - 90.0f, 6, Fade(cor, opacidade));
+        DrawRing(mao, RASTRO_RAIO_MAX - 6.0f, RASTRO_RAIO_MAX + 4.0f,
+                 a0 * lado - 90.0f, a1 * lado - 90.0f, 6, Fade(WHITE, opacidade * 0.8f));
     }
 }
 
@@ -94,6 +122,7 @@ void ResetarArma(Arma *arma)
     arma->atacando        = false;
     arma->impactoPendente = false;
     arma->direita         = true;
+    arma->relogio         = 0.0f;
 }
 
 void FinalizarArma(Arma *arma)
@@ -115,6 +144,8 @@ bool IniciarGolpe(Arma *arma, bool direita)
 
 void AtualizarArma(Arma *arma, float deltaTime)
 {
+    arma->relogio += deltaTime;
+
     if (arma->recarga > 0.0f) {
         arma->recarga -= deltaTime;
         if (arma->recarga < 0.0f) arma->recarga = 0.0f;
@@ -143,18 +174,31 @@ void DesenharArma(const Arma *arma, const Player *player)
     bool direita = arma->atacando ? arma->direita : player->olhandoDireita;
     float lado = direita ? 1.0f : -1.0f;
 
+    float fase = (float)player->frameAtual * PI_F / 5.0f;
     float balanco = 0.0f;
+    float oscilacao = sinf(arma->relogio * 2.4f) * 2.5f;
+    float respirar = sinf(arma->relogio * 2.4f) * 1.5f;
+
     if (player->andando && !arma->atacando) {
-        balanco = -fabsf(sinf((float)player->frameAtual * PI_F / 5.0f)) * 3.0f;
+        balanco = -fabsf(sinf(fase)) * 4.0f;
+        oscilacao = sinf(fase) * 7.0f;
+        respirar = 0.0f;
     }
 
     Vector2 mao = {
-        player->posicao.x + (direita ? MAO_X : 1.0f - MAO_X) * player->tamanho.x,
-        player->posicao.y + MAO_Y * player->tamanho.y + balanco
+        player->posicao.x + player->avancoVisual + (direita ? MAO_X : 1.0f - MAO_X) * player->tamanho.x,
+        player->posicao.y + MAO_Y * player->tamanho.y + balanco + respirar
     };
 
     float u = arma->atacando ? ProgressoDoGolpe(arma) : 0.0f;
-    float angulo = arma->atacando ? AnguloDoGolpe(u) : ANGULO_REPOUSO;
+    float angulo = ANGULO_REPOUSO + oscilacao;
+
+    if (arma->atacando) {
+        angulo = AnguloDoGolpe(u);
+    } else if (PlayerEsquivando(player)) {
+        angulo = ANGULO_ESQUIVA;
+        mao.x -= lado * 4.0f;
+    }
 
     if (arma->atacando) DesenharRastro(mao, lado, u);
 
@@ -169,5 +213,8 @@ void DesenharArma(const Arma *arma, const Player *player)
 
     Vector2 pivo = { PIVO_X * ESCALA_ARMA, PIVO_Y * ESCALA_ARMA };
 
-    DrawTexturePro(arma->sprite, origem, destino, pivo, angulo * lado, WHITE);
+    Color tinta = WHITE;
+    if (arma->atacando && u >= MOMENTO_IMPACTO && u < MOMENTO_IMPACTO + 0.12f) tinta = (Color){ 255, 255, 235, 255 };
+
+    DrawTexturePro(arma->sprite, origem, destino, pivo, angulo * lado, tinta);
 }

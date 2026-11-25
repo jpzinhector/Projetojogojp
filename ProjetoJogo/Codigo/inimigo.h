@@ -3,6 +3,7 @@
 
 #include "raylib.h"
 #include <stdbool.h>
+#include "skin_orc.h"
 
 typedef enum {
     INIMIGO_ORC,
@@ -29,6 +30,9 @@ typedef struct {
     Texture2D chefe;
     Texture2D arco;
     Texture2D flecha;
+    SkinOrc skinOrc;
+    SkinOrc skinOrcAlt;
+    SkinOrc skinChefe;
 } SpritesInimigos;
 
 typedef struct {
@@ -43,6 +47,8 @@ typedef struct {
     int nivel;
     Texture2D sprite;
     Texture2D arco;
+    SkinOrc skin;
+    float faseQuadro;
     bool olhandoDireita;
     float tempoDano;
     float velocidade;

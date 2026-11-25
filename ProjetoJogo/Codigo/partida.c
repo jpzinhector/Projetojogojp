@@ -183,6 +183,7 @@ void AtualizarPartida(Partida *partida, const Entrada *entrada, float dt)
 
     AtualizarArma(arma, dt);
     if (arma->atacando) player->olhandoDireita = arma->direita;
+    player->avancoVisual = AvancoArma(arma);
     if (ConsumirImpacto(arma)) AplicarGolpe(partida);
 
     Vector2 peAlvo = PePlayer(player);

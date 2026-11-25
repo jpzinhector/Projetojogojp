@@ -22,6 +22,7 @@
                 "${workspaceFolder}/telas.c",
                 "${workspaceFolder}/entrada.c",
                 "${workspaceFolder}/ui.c",
+                "${workspaceFolder}/skin_orc.c",
                 "-o",
                 "${workspaceFolder}/jogo.exe",
                 "-m64",

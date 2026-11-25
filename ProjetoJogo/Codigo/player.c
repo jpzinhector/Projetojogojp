@@ -60,6 +60,7 @@ void ResetarPlayer(Player *player)
 
     player->tempoCura = 0.0f;
     player->ultimaCura = 0;
+    player->avancoVisual = 0.0f;
 }
 
 bool PlayerEsquivando(const Player *player)
@@ -292,7 +293,8 @@ void DesenharPlayer(const Player *player)
     DrawEllipse((int)(player->posicao.x + player->tamanho.x / 2.0f), (int)(player->posicao.y + player->tamanho.y - 3.0f),
                 player->tamanho.x * 0.34f, player->tamanho.x * 0.11f, (Color){ 0, 0, 0, 70 });
 
-    DesenharFrame(player, player->posicao, player->frameAtual, player->olhandoDireita, tinta);
+    Vector2 posicaoVisual = { player->posicao.x + player->avancoVisual, player->posicao.y };
+    DesenharFrame(player, posicaoVisual, player->frameAtual, player->olhandoDireita, tinta);
 
     if (player->tempoCura > 0.0f) {
         float t = player->tempoCura / DURACAO_TEXTO_CURA;
