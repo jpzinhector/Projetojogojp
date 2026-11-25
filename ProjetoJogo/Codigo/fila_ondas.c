@@ -41,6 +41,13 @@ bool FilaDesenfileirar(FilaOndas *fila, Onda *saida)
     return true;
 }
 
+bool FilaEspiar(const FilaOndas *fila, Onda *saida)
+{
+    if (fila->inicio == NULL) return false;
+    if (saida != NULL) *saida = fila->inicio->onda;
+    return true;
+}
+
 bool FilaVazia(const FilaOndas *fila)
 {
     return fila->inicio == NULL;

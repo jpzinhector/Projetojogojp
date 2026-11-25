@@ -4,7 +4,9 @@
 #include <stdbool.h>
 
 typedef struct {
-    int quantidade;
+    int orcs;
+    int arqueiros;
+    int chefes;
     int nivel;
 } Onda;
 
@@ -22,6 +24,7 @@ typedef struct {
 void FilaIniciar(FilaOndas *fila);
 bool FilaEnfileirar(FilaOndas *fila, Onda onda);
 bool FilaDesenfileirar(FilaOndas *fila, Onda *saida);
+bool FilaEspiar(const FilaOndas *fila, Onda *saida);
 bool FilaVazia(const FilaOndas *fila);
 void FilaLimpar(FilaOndas *fila);
 
