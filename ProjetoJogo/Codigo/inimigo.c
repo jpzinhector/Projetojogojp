@@ -78,8 +78,9 @@ SpritesInimigos CarregarSpritesInimigos(void)
     s.chefe    = LoadTexture("assets/orc_chefe.png");
     s.arco     = LoadTexture("assets/arco.png");
     s.flecha   = LoadTexture("assets/flecha.png");
-    s.skinOrc  = CarregarSkinOrc(1);
-    s.skinChefe = CarregarSkinOrc(2);
+    s.skinOrc    = CarregarSkinOrc(1);
+    s.skinOrcAlt = CarregarSkinOrc(2);
+    s.skinChefe  = CarregarSkinOrc(3);
     return s;
 }
 
@@ -91,6 +92,7 @@ void DescarregarSpritesInimigos(SpritesInimigos sprites)
     UnloadTexture(sprites.arco);
     UnloadTexture(sprites.flecha);
     DescarregarSkinOrc(&sprites.skinOrc);
+    DescarregarSkinOrc(&sprites.skinOrcAlt);
     DescarregarSkinOrc(&sprites.skinChefe);
 }
 
@@ -107,7 +109,11 @@ void IniciarInimigo(Inimigo *inimigo, TipoInimigo tipo, const SpritesInimigos *s
     inimigo->arco = sprites->arco;
     memset(&inimigo->skin, 0, sizeof(inimigo->skin));
     inimigo->faseQuadro = 0.0f;
-    if (tipo == INIMIGO_ORC && sprites->skinOrc.valida) inimigo->skin = sprites->skinOrc;
+    if (tipo == INIMIGO_ORC) {
+        bool usarAlt = sprites->skinOrcAlt.valida && (!sprites->skinOrc.valida || GetRandomValue(0, 1) == 1);
+        if (usarAlt) inimigo->skin = sprites->skinOrcAlt;
+        else if (sprites->skinOrc.valida) inimigo->skin = sprites->skinOrc;
+    }
     if (tipo == INIMIGO_CHEFE && sprites->skinChefe.valida) inimigo->skin = sprites->skinChefe;
 
     switch (tipo) {

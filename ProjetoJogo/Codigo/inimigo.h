@@ -31,6 +31,7 @@ typedef struct {
     Texture2D arco;
     Texture2D flecha;
     SkinOrc skinOrc;
+    SkinOrc skinOrcAlt;
     SkinOrc skinChefe;
 } SpritesInimigos;
 
