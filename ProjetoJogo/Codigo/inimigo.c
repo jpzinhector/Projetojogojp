@@ -4,9 +4,10 @@
 
 #define PI_F                 3.14159265f
 #define DURACAO_FLASH        0.15f
-#define COMPRIMENTO_PASSO    30.0f
-#define QUIQUE_ANDAR         9.0f
-#define BALANCO_ANDAR        6.0f
+#define COMPRIMENTO_PASSO    22.0f
+#define QUIQUE_ANDAR         12.0f
+#define BALANCO_ANDAR        8.0f
+#define INCLINACAO_FRENTE    3.5f
 #define SUAVIZACAO_ANDAR     10.0f
 #define DURACAO_ATORDOAMENTO 0.25f
 #define DURACAO_TEXTO_DANO   0.7f
@@ -73,6 +74,10 @@ SpritesInimigos CarregarSpritesInimigos(void)
     s.chefe    = LoadTexture("assets/orc_chefe.png");
     s.arco     = LoadTexture("assets/arco.png");
     s.flecha   = LoadTexture("assets/flecha.png");
+    s.clava    = LoadTexture("assets/clava.png");
+    s.machado  = LoadTexture("assets/machado.png");
+    SetTextureFilter(s.clava, TEXTURE_FILTER_BILINEAR);
+    SetTextureFilter(s.machado, TEXTURE_FILTER_BILINEAR);
     return s;
 }
 
@@ -83,6 +88,8 @@ void DescarregarSpritesInimigos(SpritesInimigos sprites)
     UnloadTexture(sprites.chefe);
     UnloadTexture(sprites.arco);
     UnloadTexture(sprites.flecha);
+    UnloadTexture(sprites.clava);
+    UnloadTexture(sprites.machado);
 }
 
 void IniciarInimigo(Inimigo *inimigo, TipoInimigo tipo, const SpritesInimigos *sprites, Vector2 posicao, int nivel)
@@ -96,6 +103,7 @@ void IniciarInimigo(Inimigo *inimigo, TipoInimigo tipo, const SpritesInimigos *s
     inimigo->posicao = posicao;
     inimigo->nivel = nivel;
     inimigo->arco = sprites->arco;
+    inimigo->armaCorpo = (tipo == INIMIGO_CHEFE) ? sprites->machado : sprites->clava;
 
     switch (tipo) {
         case INIMIGO_ARQUEIRO: inimigo->sprite = sprites->arqueiro; break;
@@ -488,6 +496,122 @@ void DesenharTelegrafoInimigo(const Inimigo *inimigo)
     }
 }
 
+typedef struct {
+    float escala;
+    float pivoX;
+    float pivoY;
+    float maoX;
+    float maoY;
+    float comprimento;
+} PoseArmaCorpo;
+
+static const PoseArmaCorpo ARMAS_CORPO[] = {
+    [INIMIGO_ORC]    = { 0.62f, 32.0f, 150.0f, 0.80f, 0.69f, 100.0f },
+    [INIMIGO_CHEFE]  = { 0.95f, 30.0f, 170.0f, 0.80f, 0.69f, 165.0f }
+};
+
+static float Suave(float t)
+{
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static Vector2 PontoNoCorpo(Vector2 pivo, float largura, float altura, bool direita, float fx, float fy, float inclinacao)
+{
+    float rx = ((direita ? fx : 1.0f - fx) - 0.5f) * largura;
+    float ry = (fy - 1.0f) * altura;
+    float a = inclinacao * (PI_F / 180.0f);
+    return (Vector2){ pivo.x + rx * cosf(a) - ry * sinf(a), pivo.y + rx * sinf(a) + ry * cosf(a) };
+}
+
+static float AnguloArmaCorpo(const Inimigo *inimigo, float preparo, float golpe, float recupera, float intensidade)
+{
+    const float repouso = 30.0f;
+    float balanco = sinf(inimigo->fasePasso) * 9.0f * intensidade + sinf(inimigo->tempoAnimacao * 2.2f) * 2.5f * (1.0f - intensidade);
+
+    if (inimigo->vida <= 0) return repouso + 40.0f;
+
+    if (inimigo->estadoIA == IA_PREPARANDO) {
+        float t = Suave(preparo);
+        float tremor = sinf(inimigo->tempoAnimacao * 60.0f) * 2.0f * preparo;
+        return repouso + (-95.0f - repouso) * t + tremor;
+    }
+
+    if (inimigo->estadoIA == IA_ATACANDO) {
+        float t = Suave(golpe);
+        return -95.0f + (135.0f + 95.0f) * t;
+    }
+
+    if (inimigo->estadoIA == IA_RECUPERANDO) {
+        float t = Suave(recupera * 1.4f);
+        float oscila = sinf(t * PI_F * 2.0f) * (1.0f - t) * 6.0f;
+        return 135.0f + (repouso + balanco - 135.0f) * t + oscila;
+    }
+
+    return repouso + balanco;
+}
+
+static void DesenharArmaCorpo(const Inimigo *inimigo, Vector2 pivo, float largura, float altura, float inclinacao,
+                              float preparo, float golpe, float recupera, float intensidade, float opacidade)
+{
+    const PoseArmaCorpo *pose = &ARMAS_CORPO[inimigo->tipo];
+    float lado = inimigo->olhandoDireita ? 1.0f : -1.0f;
+    Vector2 mao = PontoNoCorpo(pivo, largura, altura, inimigo->olhandoDireita, pose->maoX, pose->maoY, inclinacao);
+    float angulo = AnguloArmaCorpo(inimigo, preparo, golpe, recupera, intensidade);
+
+    if (inimigo->estadoIA == IA_ATACANDO || (inimigo->estadoIA == IA_RECUPERANDO && recupera < 0.2f)) {
+        float visivel = (inimigo->estadoIA == IA_ATACANDO) ? 1.0f : 1.0f - recupera / 0.2f;
+        float ponta = angulo;
+        float cauda = ponta - 110.0f;
+        if (cauda < -95.0f) cauda = -95.0f;
+        for (int i = 0; i < 8; i++) {
+            float a0 = cauda + (ponta - cauda) * (float)i / 8.0f;
+            float a1 = cauda + (ponta - cauda) * (float)(i + 1) / 8.0f;
+            float alfa = 0.6f * visivel * (float)(i + 1) / 8.0f;
+            DrawRing(mao, pose->comprimento * 0.45f, pose->comprimento, (a0 * lado + inclinacao) - 90.0f,
+                     (a1 * lado + inclinacao) - 90.0f, 6, (Color){ 255, 120, 90, (unsigned char)(255.0f * alfa * opacidade) });
+        }
+    }
+
+    Texture2D tex = inimigo->armaCorpo;
+    float w = tex.width * pose->escala;
+    float h = tex.height * pose->escala;
+    Rectangle origem = { 0, 0, (float)tex.width, (float)tex.height };
+    float pivoX = pose->pivoX * pose->escala;
+    if (!inimigo->olhandoDireita) {
+        origem.width = -origem.width;
+        pivoX = w - pivoX;
+    }
+
+    Color tinta = WHITE;
+    if (inimigo->tempoDano > 0.0f) tinta = (Color){ 255, 130, 130, 255 };
+    tinta.a = (unsigned char)(255.0f * opacidade);
+
+    DrawTexturePro(tex, origem, (Rectangle){ mao.x, mao.y, w, h }, (Vector2){ pivoX, pose->pivoY * pose->escala },
+                   angulo * lado + inclinacao, tinta);
+}
+
+static void DesenharPoeira(const Inimigo *inimigo, float intensidade)
+{
+    if (intensidade < 0.3f) return;
+
+    float fase = fmodf(inimigo->fasePasso, PI_F) / PI_F;
+    if (fase > 0.6f) return;
+
+    float t = fase / 0.6f;
+    float lado = (sinf(inimigo->fasePasso) >= 0.0f) ? 1.0f : -1.0f;
+    float direcao = inimigo->olhandoDireita ? 1.0f : -1.0f;
+    float escala = (inimigo->tipo == INIMIGO_CHEFE) ? 1.7f : 1.0f;
+
+    float x = inimigo->posicao.x + inimigo->tamanho.x / 2.0f + lado * inimigo->tamanho.x * 0.16f - direcao * t * 14.0f;
+    float y = inimigo->posicao.y + inimigo->tamanho.y - 5.0f - t * 6.0f;
+    unsigned char alfa = (unsigned char)(110.0f * (1.0f - t) * intensidade);
+
+    DrawCircle((int)x, (int)y, (3.0f + t * 9.0f) * escala, (Color){ 214, 200, 170, alfa });
+    DrawCircle((int)(x - direcao * 6.0f), (int)(y + 2.0f), (2.0f + t * 6.0f) * escala, (Color){ 190, 176, 148, (unsigned char)(alfa * 0.7f) });
+}
+
 void DesenharInimigo(const Inimigo *inimigo)
 {
     const PerfilInimigo *perfil = Perfil(inimigo);
@@ -499,7 +623,7 @@ void DesenharInimigo(const Inimigo *inimigo)
     float intensidade = inimigo->intensidadeAndar;
 
     float quique = passo * QUIQUE_ANDAR * intensidade;
-    float inclinacao = sinf(inimigo->fasePasso) * BALANCO_ANDAR * intensidade;
+    float inclinacao = sinf(inimigo->fasePasso) * BALANCO_ANDAR * intensidade + direcao * INCLINACAO_FRENTE * intensidade;
     float esticar = 0.12f * (passo - 0.5f) * intensidade;
     float respirar = 0.012f * sinf(inimigo->tempoAnimacao * 3.0f) * (1.0f - intensidade);
 
@@ -568,6 +692,7 @@ void DesenharInimigo(const Inimigo *inimigo)
     };
 
     if (!invisivel) {
+        if (!morrendo) DesenharPoeira(inimigo, intensidade);
         DrawEllipse((int)(inimigo->posicao.x + inimigo->tamanho.x / 2.0f), (int)(inimigo->posicao.y + inimigo->tamanho.y - 4.0f),
                     inimigo->tamanho.x * 0.34f * (1.0f - 0.25f * (quique / 34.0f)), inimigo->tamanho.x * 0.34f * 0.32f,
                     (Color){ 0, 0, 0, (unsigned char)(70 * opacidade) });
@@ -586,13 +711,18 @@ void DesenharInimigo(const Inimigo *inimigo)
         tinta.a = (unsigned char)(255.0f * opacidade);
 
         DrawTexturePro(inimigo->sprite, origem, destino, (Vector2){ largura / 2.0f, altura }, inclinacao, tinta);
+
+        if (inimigo->tipo != INIMIGO_ARQUEIRO && inimigo->armaCorpo.id != 0) {
+            DesenharArmaCorpo(inimigo, pivo, largura, altura, inclinacao, preparo, golpe, recupera, intensidade, opacidade);
+        }
     }
 
     if (inimigo->tipo == INIMIGO_ARQUEIRO && !morrendo && inimigo->arco.id != 0) {
-        Vector2 peito = PeitoDoInimigo(inimigo);
+        Vector2 peito = PontoNoCorpo(pivo, largura, altura, inimigo->olhandoDireita, 0.5f, 0.5f, inclinacao);
         float puxar = (inimigo->estadoIA == IA_PREPARANDO) ? preparo : 0.0f;
-        float angulo = inimigo->anguloMira;
-        Vector2 mao = { peito.x + cosf(angulo) * 20.0f + deslocX, peito.y + sinf(angulo) * 20.0f - quique };
+        float angulo = inimigo->anguloMira + sinf(inimigo->fasePasso) * 0.07f * intensidade;
+        float afasta = 20.0f - 5.0f * puxar;
+        Vector2 mao = { peito.x + cosf(angulo) * afasta, peito.y + sinf(angulo) * afasta };
 
         Rectangle origemArco = { 0, 0, (float)inimigo->arco.width, (float)inimigo->arco.height };
         Rectangle destinoArco = { mao.x, mao.y, inimigo->arco.width * 0.85f, inimigo->arco.height * 0.85f };

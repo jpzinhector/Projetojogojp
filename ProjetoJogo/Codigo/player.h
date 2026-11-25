@@ -40,6 +40,8 @@ typedef struct {
 
     float tempoCura;
     int   ultimaCura;
+
+    float avancoVisual;
 } Player;
 
 void IniciarPlayer(Player *player);

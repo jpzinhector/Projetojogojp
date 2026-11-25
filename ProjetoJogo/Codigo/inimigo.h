@@ -29,6 +29,8 @@ typedef struct {
     Texture2D chefe;
     Texture2D arco;
     Texture2D flecha;
+    Texture2D clava;
+    Texture2D machado;
 } SpritesInimigos;
 
 typedef struct {
@@ -43,6 +45,7 @@ typedef struct {
     int nivel;
     Texture2D sprite;
     Texture2D arco;
+    Texture2D armaCorpo;
     bool olhandoDireita;
     float tempoDano;
     float velocidade;
