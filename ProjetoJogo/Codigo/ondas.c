@@ -7,11 +7,11 @@
 void CarregarOndas(FilaOndas *fila)
 {
     const Onda ondas[TOTAL_ONDAS] = {
-        { 3, 1 },
-        { 4, 1 },
-        { 4, 2 },
-        { 5, 2 },
-        { 6, 3 }
+        { 3, 0, 0, 1 },
+        { 3, 1, 0, 1 },
+        { 3, 2, 0, 2 },
+        { 4, 2, 0, 2 },
+        { 3, 1, 1, 3 }
     };
 
     for (int i = 0; i < TOTAL_ONDAS; i++) {
@@ -19,12 +19,18 @@ void CarregarOndas(FilaOndas *fila)
     }
 }
 
-void GerarOnda(ListaInimigos *lista, Onda onda, Texture2D sprite, Rectangle limites, Vector2 centroAlvo)
+bool OndaTemChefe(Onda onda)
 {
-    for (int i = 0; i < onda.quantidade; i++) {
+    return onda.chefes > 0;
+}
+
+static void GerarGrupo(ListaInimigos *lista, TipoInimigo tipo, int quantidade, int nivel,
+                       const SpritesInimigos *sprites, Rectangle limites, Vector2 centroAlvo)
+{
+    for (int i = 0; i < quantidade; i++) {
         Inimigo inimigo;
 
-        IniciarInimigo(&inimigo, sprite, (Vector2){ 0, 0 }, onda.nivel);
+        IniciarInimigo(&inimigo, tipo, sprites, (Vector2){ 0, 0 }, nivel);
         Vector2 tam = inimigo.tamanho;
 
         Vector2 pos = { limites.x, limites.y };
@@ -39,7 +45,14 @@ void GerarOnda(ListaInimigos *lista, Onda onda, Texture2D sprite, Rectangle limi
             if (Vector2Distance(centro, centroAlvo) >= DISTANCIA_MINIMA_SPAWN) break;
         }
 
-        IniciarInimigo(&inimigo, sprite, pos, onda.nivel);
+        IniciarInimigo(&inimigo, tipo, sprites, pos, nivel);
         ListaInserir(lista, inimigo);
     }
+}
+
+void GerarOnda(ListaInimigos *lista, Onda onda, const SpritesInimigos *sprites, Rectangle limites, Vector2 centroAlvo)
+{
+    GerarGrupo(lista, INIMIGO_CHEFE, onda.chefes, onda.nivel, sprites, limites, centroAlvo);
+    GerarGrupo(lista, INIMIGO_ORC, onda.orcs, onda.nivel, sprites, limites, centroAlvo);
+    GerarGrupo(lista, INIMIGO_ARQUEIRO, onda.arqueiros, onda.nivel, sprites, limites, centroAlvo);
 }

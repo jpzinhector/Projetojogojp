@@ -1,65 +1,84 @@
-/* ============================================================
- *  inimigo.h
- *  INTERFACE PÚBLICA do módulo Inimigo (Orc).
- * ============================================================ */
 #ifndef INIMIGO_H
 #define INIMIGO_H
 
-#include <stdbool.h>
 #include "raylib.h"
+#include <stdbool.h>
+
+typedef enum {
+    INIMIGO_ORC,
+    INIMIGO_ARQUEIRO,
+    INIMIGO_CHEFE
+} TipoInimigo;
+
+typedef enum {
+    IA_PERSEGUINDO,
+    IA_PREPARANDO,
+    IA_ATACANDO,
+    IA_RECUPERANDO
+} EstadoIA;
+
+typedef enum {
+    EVENTO_NENHUM,
+    EVENTO_GOLPE_CORPO,
+    EVENTO_DISPARO
+} EventoInimigo;
 
 typedef struct {
-    Vector2 posicao;        // canto superior esquerdo do orc na tela
-    Vector2 tamanho;        // tamanho com que o orc é DESENHADO
-    int     vida;           // vida atual (0 ou menos = morto, não é mais desenhado)
-    int     vidaMaxima;     // vida inicial (usada na barrinha de vida)
-    int     nivel;          // nível do orc (1, 2, 3...) - quanto maior, mais vida
-    Texture2D sprite;       // cópia da textura COMPARTILHADA (não descarregue por aqui!)
-    bool    olhandoDireita; // true = sprite original; false = espelhado
-    float   tempoDano;      // segundos restantes do "flash" vermelho ao levar dano
-    float   velocidade;     // pixels por segundo ao perseguir o alvo
+    Texture2D orc;
+    Texture2D arqueiro;
+    Texture2D chefe;
+    Texture2D arco;
+    Texture2D flecha;
+} SpritesInimigos;
 
-    bool    andando;
-    float   fasePasso;
-    float   intensidadeAndar;
-    float   tempoAnimacao;
-
+typedef struct {
+    TipoInimigo tipo;
+    EstadoIA estadoIA;
+    float tempoEstado;
+    float anguloMira;
+    Vector2 posicao;
+    Vector2 tamanho;
+    int vida;
+    int vidaMaxima;
+    int nivel;
+    Texture2D sprite;
+    Texture2D arco;
+    bool olhandoDireita;
+    float tempoDano;
+    float velocidade;
+    bool andando;
+    float fasePasso;
+    float intensidadeAndar;
+    float tempoAnimacao;
     Vector2 recuo;
-    float   tempoAtordoado;
-    int     ultimoDano;
-    float   tempoTextoDano;
-    float   tempoMorte;
-    int     ladoQueda;
+    float tempoAtordoado;
+    int ultimoDano;
+    float tempoTextoDano;
+    float tempoMorte;
+    int ladoQueda;
 } Inimigo;
 
-// Carrega a imagem do orc UMA vez (todos os orcs usam a mesma textura)
-Texture2D CarregarSpriteOrc(void);
+SpritesInimigos CarregarSpritesInimigos(void);
+void DescarregarSpritesInimigos(SpritesInimigos sprites);
 
-// Preenche a struct: posição, nível, vida, tamanho...
-void IniciarInimigo(Inimigo *inimigo, Texture2D sprite, Vector2 posicao, int nivel);
-
-// Atualiza timers do inimigo (flash de dano). Chame todo frame.
+void IniciarInimigo(Inimigo *inimigo, TipoInimigo tipo, const SpritesInimigos *sprites, Vector2 posicao, int nivel);
 void AtualizarInimigo(Inimigo *inimigo, float deltaTime);
-
-void MoverInimigo(Inimigo *inimigo, Vector2 alvo, float deltaTime, Rectangle limites);
-
+EventoInimigo AtualizarIAInimigo(Inimigo *inimigo, Vector2 peAlvo, float deltaTime, Rectangle limites);
 void AfastarInimigos(Inimigo *a, Inimigo *b, Rectangle limites);
 
-int DanoContatoInimigo(const Inimigo *inimigo);
+Vector2 PeDoInimigo(const Inimigo *inimigo);
+Vector2 PontaDoArco(const Inimigo *inimigo);
+bool GolpeAtingeAlvo(const Inimigo *inimigo, Vector2 peAlvo);
+int DanoCorpoInimigo(const Inimigo *inimigo);
+int DanoFlechaInimigo(const Inimigo *inimigo);
+int PontosInimigo(const Inimigo *inimigo);
+int ChanceDropInimigo(const Inimigo *inimigo);
 
-// Retorna true se o inimigo está vivo e o CENTRO dele está a no máximo
-// "alcance" pixels do ponto "alvo" (ex.: centro do player)
 bool InimigoPertoDe(const Inimigo *inimigo, Vector2 alvo, float alcance);
-
-// Tira "dano" de vida do inimigo. Retorna true se este golpe MATOU o orc.
 bool DanoInimigo(Inimigo *inimigo, int dano);
-
 bool GolpearInimigo(Inimigo *inimigo, int dano, Vector2 origem);
 
-// Desenha o orc + barra de vida + nível (não desenha nada se estiver morto)
+void DesenharTelegrafoInimigo(const Inimigo *inimigo);
 void DesenharInimigo(const Inimigo *inimigo);
 
-// Libera a textura (chame UMA vez no fim do jogo)
-void DescarregarSpriteOrc(Texture2D sprite);
-
-#endif /* INIMIGO_H */
+#endif
