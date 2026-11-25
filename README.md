@@ -43,6 +43,7 @@ Ajuste os caminhos `C:/raylib/...` do `tasks.json` se a raylib estiver instalada
 | `player` | Movimento, vida, esquiva com rastro e cura |
 | `arma` | Espada: animação de golpe e momento do impacto |
 | `inimigo` | Orc, arqueiro e chefe: máquina de estados da IA, telégrafo de ataque, animações |
+| `skin_orc` | Carrega e desenha as animações por quadros dos orcs (parado, andar, ataque, dano e morte) |
 | `ondas` | Composição das ondas e geração dos inimigos |
 | `arena` | Fundo e limites da arena |
 | `ui` | HUD, menus e telas finais |
@@ -60,3 +61,14 @@ Ajuste os caminhos `C:/raylib/...` do `tasks.json` se a raylib estiver instalada
 ProjetoJogo/Codigo/   código-fonte (.c/.h) e assets/
 .vscode/tasks.json    tarefa de compilação
 ```
+
+## Sprites animados dos orcs
+
+Os quadros originais ficam em `ProjetoJogo/1_ORK`, `2_ORK` e `3_ORK` (10 quadros por animação: IDLE, WALK, ATTAK, HURT e DIE).
+Para o jogo eles são recortados e reunidos em tiras em `Codigo/assets/orcs/` com:
+
+```
+python3 ProjetoJogo/Ferramentas/gerar_atlas_orcs.py
+```
+
+Animações que faltarem em uma pasta usam a pose de repouso do ataque com movimento automático.

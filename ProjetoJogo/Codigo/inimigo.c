@@ -1,5 +1,6 @@
 #include "inimigo.h"
 #include <stdio.h>
+#include <string.h>
 #include <math.h>
 
 #define PI_F                 3.14159265f
@@ -11,7 +12,10 @@
 #define SUAVIZACAO_ANDAR     10.0f
 #define DURACAO_ATORDOAMENTO 0.25f
 #define DURACAO_TEXTO_DANO   0.7f
-#define DURACAO_MORTE        0.4f
+#define DURACAO_MORTE        0.9f
+#define LARGURA_CORPO_SKIN   0.55f
+#define PASSO_POR_CICLO      0.75f
+#define FPS_PARADO           9.0f
 #define FORCA_RECUO          420.0f
 #define FORCA_RECUO_MORTE    620.0f
 #define DESACELERACAO_RECUO  10.0f
@@ -74,10 +78,8 @@ SpritesInimigos CarregarSpritesInimigos(void)
     s.chefe    = LoadTexture("assets/orc_chefe.png");
     s.arco     = LoadTexture("assets/arco.png");
     s.flecha   = LoadTexture("assets/flecha.png");
-    s.clava    = LoadTexture("assets/clava.png");
-    s.machado  = LoadTexture("assets/machado.png");
-    SetTextureFilter(s.clava, TEXTURE_FILTER_BILINEAR);
-    SetTextureFilter(s.machado, TEXTURE_FILTER_BILINEAR);
+    s.skinOrc  = CarregarSkinOrc(1);
+    s.skinChefe = CarregarSkinOrc(2);
     return s;
 }
 
@@ -88,8 +90,8 @@ void DescarregarSpritesInimigos(SpritesInimigos sprites)
     UnloadTexture(sprites.chefe);
     UnloadTexture(sprites.arco);
     UnloadTexture(sprites.flecha);
-    UnloadTexture(sprites.clava);
-    UnloadTexture(sprites.machado);
+    DescarregarSkinOrc(&sprites.skinOrc);
+    DescarregarSkinOrc(&sprites.skinChefe);
 }
 
 void IniciarInimigo(Inimigo *inimigo, TipoInimigo tipo, const SpritesInimigos *sprites, Vector2 posicao, int nivel)
@@ -103,7 +105,10 @@ void IniciarInimigo(Inimigo *inimigo, TipoInimigo tipo, const SpritesInimigos *s
     inimigo->posicao = posicao;
     inimigo->nivel = nivel;
     inimigo->arco = sprites->arco;
-    inimigo->armaCorpo = (tipo == INIMIGO_CHEFE) ? sprites->machado : sprites->clava;
+    memset(&inimigo->skin, 0, sizeof(inimigo->skin));
+    inimigo->faseQuadro = 0.0f;
+    if (tipo == INIMIGO_ORC && sprites->skinOrc.valida) inimigo->skin = sprites->skinOrc;
+    if (tipo == INIMIGO_CHEFE && sprites->skinChefe.valida) inimigo->skin = sprites->skinChefe;
 
     switch (tipo) {
         case INIMIGO_ARQUEIRO: inimigo->sprite = sprites->arqueiro; break;
@@ -128,6 +133,7 @@ void IniciarInimigo(Inimigo *inimigo, TipoInimigo tipo, const SpritesInimigos *s
 
     float proporcao = (inimigo->sprite.height > 0) ? (float)inimigo->sprite.width / (float)inimigo->sprite.height : 0.7f;
     inimigo->tamanho = (Vector2){ perfil->altura * proporcao, perfil->altura };
+    if (inimigo->skin.valida) inimigo->tamanho.x = perfil->altura * LARGURA_CORPO_SKIN;
 
     float centroX = posicao.x + inimigo->tamanho.x / 2.0f;
     inimigo->olhandoDireita = (centroX < GetScreenWidth() / 2.0f);
@@ -244,6 +250,7 @@ static void AndarPara(Inimigo *inimigo, float dirX, float dirY, float velocidade
     inimigo->posicao.y += dirY * velocidade * dt;
     inimigo->andando = true;
     inimigo->fasePasso += PI_F * (velocidade / COMPRIMENTO_PASSO) * dt;
+    inimigo->faseQuadro += velocidade * dt / (inimigo->tamanho.y * PASSO_POR_CICLO);
     LimitarNaArena(inimigo, limites);
 }
 
@@ -496,100 +503,12 @@ void DesenharTelegrafoInimigo(const Inimigo *inimigo)
     }
 }
 
-typedef struct {
-    float escala;
-    float pivoX;
-    float pivoY;
-    float maoX;
-    float maoY;
-    float comprimento;
-} PoseArmaCorpo;
-
-static const PoseArmaCorpo ARMAS_CORPO[] = {
-    [INIMIGO_ORC]    = { 0.62f, 32.0f, 150.0f, 0.80f, 0.69f, 100.0f },
-    [INIMIGO_CHEFE]  = { 0.95f, 30.0f, 170.0f, 0.80f, 0.69f, 165.0f }
-};
-
-static float Suave(float t)
-{
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    return t * t * (3.0f - 2.0f * t);
-}
-
 static Vector2 PontoNoCorpo(Vector2 pivo, float largura, float altura, bool direita, float fx, float fy, float inclinacao)
 {
     float rx = ((direita ? fx : 1.0f - fx) - 0.5f) * largura;
     float ry = (fy - 1.0f) * altura;
     float a = inclinacao * (PI_F / 180.0f);
     return (Vector2){ pivo.x + rx * cosf(a) - ry * sinf(a), pivo.y + rx * sinf(a) + ry * cosf(a) };
-}
-
-static float AnguloArmaCorpo(const Inimigo *inimigo, float preparo, float golpe, float recupera, float intensidade)
-{
-    const float repouso = 30.0f;
-    float balanco = sinf(inimigo->fasePasso) * 9.0f * intensidade + sinf(inimigo->tempoAnimacao * 2.2f) * 2.5f * (1.0f - intensidade);
-
-    if (inimigo->vida <= 0) return repouso + 40.0f;
-
-    if (inimigo->estadoIA == IA_PREPARANDO) {
-        float t = Suave(preparo);
-        float tremor = sinf(inimigo->tempoAnimacao * 60.0f) * 2.0f * preparo;
-        return repouso + (-95.0f - repouso) * t + tremor;
-    }
-
-    if (inimigo->estadoIA == IA_ATACANDO) {
-        float t = Suave(golpe);
-        return -95.0f + (135.0f + 95.0f) * t;
-    }
-
-    if (inimigo->estadoIA == IA_RECUPERANDO) {
-        float t = Suave(recupera * 1.4f);
-        float oscila = sinf(t * PI_F * 2.0f) * (1.0f - t) * 6.0f;
-        return 135.0f + (repouso + balanco - 135.0f) * t + oscila;
-    }
-
-    return repouso + balanco;
-}
-
-static void DesenharArmaCorpo(const Inimigo *inimigo, Vector2 pivo, float largura, float altura, float inclinacao,
-                              float preparo, float golpe, float recupera, float intensidade, float opacidade)
-{
-    const PoseArmaCorpo *pose = &ARMAS_CORPO[inimigo->tipo];
-    float lado = inimigo->olhandoDireita ? 1.0f : -1.0f;
-    Vector2 mao = PontoNoCorpo(pivo, largura, altura, inimigo->olhandoDireita, pose->maoX, pose->maoY, inclinacao);
-    float angulo = AnguloArmaCorpo(inimigo, preparo, golpe, recupera, intensidade);
-
-    if (inimigo->estadoIA == IA_ATACANDO || (inimigo->estadoIA == IA_RECUPERANDO && recupera < 0.2f)) {
-        float visivel = (inimigo->estadoIA == IA_ATACANDO) ? 1.0f : 1.0f - recupera / 0.2f;
-        float ponta = angulo;
-        float cauda = ponta - 110.0f;
-        if (cauda < -95.0f) cauda = -95.0f;
-        for (int i = 0; i < 8; i++) {
-            float a0 = cauda + (ponta - cauda) * (float)i / 8.0f;
-            float a1 = cauda + (ponta - cauda) * (float)(i + 1) / 8.0f;
-            float alfa = 0.6f * visivel * (float)(i + 1) / 8.0f;
-            DrawRing(mao, pose->comprimento * 0.45f, pose->comprimento, (a0 * lado + inclinacao) - 90.0f,
-                     (a1 * lado + inclinacao) - 90.0f, 6, (Color){ 255, 120, 90, (unsigned char)(255.0f * alfa * opacidade) });
-        }
-    }
-
-    Texture2D tex = inimigo->armaCorpo;
-    float w = tex.width * pose->escala;
-    float h = tex.height * pose->escala;
-    Rectangle origem = { 0, 0, (float)tex.width, (float)tex.height };
-    float pivoX = pose->pivoX * pose->escala;
-    if (!inimigo->olhandoDireita) {
-        origem.width = -origem.width;
-        pivoX = w - pivoX;
-    }
-
-    Color tinta = WHITE;
-    if (inimigo->tempoDano > 0.0f) tinta = (Color){ 255, 130, 130, 255 };
-    tinta.a = (unsigned char)(255.0f * opacidade);
-
-    DrawTexturePro(tex, origem, (Rectangle){ mao.x, mao.y, w, h }, (Vector2){ pivoX, pose->pivoY * pose->escala },
-                   angulo * lado + inclinacao, tinta);
 }
 
 static void DesenharPoeira(const Inimigo *inimigo, float intensidade)
@@ -610,6 +529,101 @@ static void DesenharPoeira(const Inimigo *inimigo, float intensidade)
 
     DrawCircle((int)x, (int)y, (3.0f + t * 9.0f) * escala, (Color){ 214, 200, 170, alfa });
     DrawCircle((int)(x - direcao * 6.0f), (int)(y + 2.0f), (2.0f + t * 6.0f) * escala, (Color){ 190, 176, 148, (unsigned char)(alfa * 0.7f) });
+}
+
+static void DesenharCorpoSkin(const Inimigo *inimigo, float preparo, float golpe, float recupera, float intensidade, bool morrendo)
+{
+    const SkinOrc *skin = &inimigo->skin;
+    float direcao = inimigo->olhandoDireita ? 1.0f : -1.0f;
+    AnimacaoOrc anim = ANIM_ATAQUE;
+    int quadro = 0;
+    bool procedural = false;
+    float opacidade = 1.0f;
+    float deslocX = 0.0f;
+    float aquecimento = 0.0f;
+
+    if (morrendo && SkinTemAnimacao(skin, ANIM_MORTE)) {
+        float p = 1.0f - inimigo->tempoMorte / DURACAO_MORTE;
+        if (p < 0.0f) p = 0.0f;
+        anim = ANIM_MORTE;
+        quadro = (int)(p * (float)skin->quadros[ANIM_MORTE]);
+        if (p > 0.75f) opacidade = 1.0f - (p - 0.75f) / 0.25f;
+    } else if (morrendo) {
+        procedural = true;
+        opacidade = inimigo->tempoMorte / DURACAO_MORTE;
+    } else if (inimigo->tempoAtordoado > 0.0f && SkinTemAnimacao(skin, ANIM_DANO)) {
+        float p = 1.0f - inimigo->tempoAtordoado / DURACAO_ATORDOAMENTO;
+        anim = ANIM_DANO;
+        quadro = (int)(p * (float)skin->quadros[ANIM_DANO]);
+    } else if (inimigo->estadoIA == IA_PREPARANDO && SkinTemAnimacao(skin, ANIM_ATAQUE)) {
+        quadro = (int)(preparo * 6.99f);
+        deslocX = -direcao * 4.0f * preparo + sinf(inimigo->tempoAnimacao * 70.0f) * 1.2f * preparo;
+        aquecimento = preparo;
+    } else if (inimigo->estadoIA == IA_ATACANDO && SkinTemAnimacao(skin, ANIM_ATAQUE)) {
+        quadro = 6 + (int)(golpe * 2.99f);
+        deslocX = direcao * 10.0f;
+    } else if (inimigo->estadoIA == IA_RECUPERANDO && SkinTemAnimacao(skin, ANIM_ATAQUE)) {
+        quadro = 9;
+    } else if (intensidade > 0.35f) {
+        if (SkinTemAnimacao(skin, ANIM_ANDAR)) {
+            anim = ANIM_ANDAR;
+            quadro = (int)(inimigo->faseQuadro * (float)skin->quadros[ANIM_ANDAR]) % skin->quadros[ANIM_ANDAR];
+        } else {
+            procedural = true;
+        }
+    } else if (SkinTemAnimacao(skin, ANIM_PARADO)) {
+        anim = ANIM_PARADO;
+        quadro = (int)(inimigo->tempoAnimacao * FPS_PARADO) % skin->quadros[ANIM_PARADO];
+    }
+
+    if (!SkinTemAnimacao(skin, anim)) {
+        anim = ANIM_ATAQUE;
+        quadro = 0;
+        if (!SkinTemAnimacao(skin, anim)) return;
+    }
+
+    float passo = fabsf(sinf(inimigo->fasePasso));
+    float quique = 0.0f;
+    float inclinacao = 0.0f;
+    float escalaX = 1.0f;
+    float escalaY = 1.0f;
+
+    if (procedural && !morrendo) {
+        quique = passo * QUIQUE_ANDAR * intensidade;
+        inclinacao = sinf(inimigo->fasePasso) * BALANCO_ANDAR * intensidade + direcao * INCLINACAO_FRENTE * intensidade;
+        float esticar = 0.12f * (passo - 0.5f) * intensidade;
+        escalaX -= esticar;
+        escalaY += esticar;
+    }
+
+    float pancada = inimigo->tempoDano / DURACAO_FLASH;
+    if (pancada < 0.0f) pancada = 0.0f;
+    if (pancada > 1.0f) pancada = 1.0f;
+    escalaX *= 1.0f + 0.08f * pancada;
+    escalaY *= 1.0f - 0.08f * pancada;
+
+    float forcaRecuo = inimigo->recuo.x / FORCA_RECUO;
+    if (forcaRecuo > 1.5f) forcaRecuo = 1.5f;
+    if (forcaRecuo < -1.5f) forcaRecuo = -1.5f;
+    if (!morrendo) inclinacao += forcaRecuo * 5.0f;
+
+    float centroX = inimigo->posicao.x + inimigo->tamanho.x / 2.0f;
+    float baseY = inimigo->posicao.y + inimigo->tamanho.y;
+
+    if (!morrendo) DesenharPoeira(inimigo, intensidade);
+    DrawEllipse((int)centroX, (int)(baseY - 4.0f), inimigo->tamanho.x * 0.5f * (1.0f - 0.2f * (quique / 20.0f)),
+                inimigo->tamanho.x * 0.16f, (Color){ 0, 0, 0, (unsigned char)(70 * opacidade) });
+
+    Color tinta = WHITE;
+    if (inimigo->tempoDano > 0.0f) {
+        tinta = (Color){ 255, 110, 110, 255 };
+    } else if (aquecimento > 0.0f) {
+        tinta = (Color){ 255, (unsigned char)(255 - 110 * aquecimento), (unsigned char)(255 - 150 * aquecimento), 255 };
+    }
+    tinta.a = (unsigned char)(255.0f * opacidade);
+
+    Vector2 pe = { centroX + deslocX, baseY - quique };
+    DesenharQuadroSkin(skin, anim, quadro, pe, inimigo->tamanho.y, inimigo->olhandoDireita, inclinacao, escalaX, escalaY, tinta);
 }
 
 void DesenharInimigo(const Inimigo *inimigo)
@@ -691,7 +705,9 @@ void DesenharInimigo(const Inimigo *inimigo)
         inimigo->posicao.y + inimigo->tamanho.y - quique
     };
 
-    if (!invisivel) {
+    if (inimigo->skin.valida) {
+        if (!invisivel) DesenharCorpoSkin(inimigo, preparo, golpe, recupera, intensidade, morrendo);
+    } else if (!invisivel) {
         if (!morrendo) DesenharPoeira(inimigo, intensidade);
         DrawEllipse((int)(inimigo->posicao.x + inimigo->tamanho.x / 2.0f), (int)(inimigo->posicao.y + inimigo->tamanho.y - 4.0f),
                     inimigo->tamanho.x * 0.34f * (1.0f - 0.25f * (quique / 34.0f)), inimigo->tamanho.x * 0.34f * 0.32f,
@@ -711,10 +727,6 @@ void DesenharInimigo(const Inimigo *inimigo)
         tinta.a = (unsigned char)(255.0f * opacidade);
 
         DrawTexturePro(inimigo->sprite, origem, destino, (Vector2){ largura / 2.0f, altura }, inclinacao, tinta);
-
-        if (inimigo->tipo != INIMIGO_ARQUEIRO && inimigo->armaCorpo.id != 0) {
-            DesenharArmaCorpo(inimigo, pivo, largura, altura, inclinacao, preparo, golpe, recupera, intensidade, opacidade);
-        }
     }
 
     if (inimigo->tipo == INIMIGO_ARQUEIRO && !morrendo && inimigo->arco.id != 0) {
